@@ -40,7 +40,7 @@ using std::ostringstream;
 
 constexpr const char*   VERSION_        = "0.1";
 constexpr const char*   FILTER_STRING_  = "inbound and (arp or ip)";
-constexpr const char*   IP_UTILITY_     = "/sbin/ip";
+constexpr const char*   IP_UTILITY_     = "ip";
 constexpr const int     CAP_LENGTH_     = 80;
 
 struct PacketMetadata
