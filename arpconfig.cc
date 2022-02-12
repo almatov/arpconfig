@@ -45,10 +45,10 @@ constexpr const int     CAP_LENGTH_     = 80;
 
 struct ConfigData
 {
-    uint8_t             smac[ 6 ]       = { 0 };
-    uint8_t             dmac[ 6 ]       = { 0 };
-    uint32_t            sip             = 0;
-    uint32_t            dip             = 0;
+    uint8_t             myMac[ 6 ]      = { 0 };
+    uint8_t             gwMac[ 6 ]      = { 0 };
+    uint32_t            myIp            = 0;
+    uint32_t            gwIp            = 0;
     bool                shouldConfigure = false;
     bool                shouldTest      = false;
 };
@@ -146,8 +146,8 @@ udpSend_( const char* interfaceName, const ConfigData* conf )
         static uint8_t  payload[ 32 ] = { 0 };
 
         libnet_build_udp( 33427, 33434, 40, 0, payload, sizeof(payload), lnet, 0 );
-        libnet_build_ipv4( 60, 0, 0x34ad, 0, 1, 17, 0, htonl(conf->dip), htonl(conf->sip), nullptr, 0, lnet, 0 );
-        libnet_build_ethernet( conf->smac, conf->dmac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
+        libnet_build_ipv4( 60, 0, 0x34ad, 0, 1, 17, 0, htonl(conf->myIp), htonl(conf->gwIp), nullptr, 0, lnet, 0 );
+        libnet_build_ethernet( conf->gwMac, conf->myMac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
         libnet_write( lnet );
         libnet_destroy( lnet );
     }
@@ -164,34 +164,34 @@ packetProcessing_
 {
     ConfigData*     conf = reinterpret_cast<ConfigData*>( userData );
 
-    memcpy( conf->smac, packet + 6, sizeof(conf->smac) );
-    memcpy( conf->dmac, packet, sizeof(conf->dmac) );
+    memcpy( conf->gwMac, packet + 6, sizeof(conf->gwMac) );
+    memcpy( conf->myMac, packet, sizeof(conf->myMac) );
 
     if ( memcmp(packet+12, "\x8\x6\0\x1", 4) == 0 )
     {
         // ARP
-        conf->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 28) );
-        conf->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 38) );
+        conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 28) );
+        conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 38) );
         conf->shouldConfigure = false;
-        conf->shouldTest = ( conf->sip != conf->dip );
+        conf->shouldTest = ( conf->gwIp != conf->myIp );
         return;
     }
     
     if ( memcmp(packet+34, "\0\x43\0\x44", 4) == 0 && memcmp(packet+46, "\0\0\0\x9", 4) == 0 )
     {
         // BOOTP reply
-        conf->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
-        conf->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) );
+        conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
+        conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) );
         conf->shouldConfigure = false;
         conf->shouldTest = true;
         return;
     }
 
     // UDP test for unicast packet then check response for ICMP type 11 or type 3 code 3
-    conf->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
-    conf->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 30) );
+    conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
+    conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 30) );
     conf->shouldConfigure = ( packet[23] == 1 && (packet[34] == 11 || (packet[34]==3 && packet[35]==3)) );
-    conf->shouldTest = ( !conf->shouldConfigure && (conf->dmac[0] & 1) == 0 );
+    conf->shouldTest = ( !conf->shouldConfigure && (conf->myMac[0] & 1) == 0 );
 }
 
 /**************************************************************************************************************/
@@ -290,27 +290,27 @@ main( int argc, char* argv[] )
 
         if ( conf.shouldTest )
         {
-            if ( conf.dmac[0] & 1 )
+            if ( conf.myMac[0] & 1 )
             {
-                memcpy( conf.dmac, newMac, sizeof(conf.dmac) );;
+                memcpy( conf.myMac, newMac, sizeof(conf.myMac) );;
             }
 
-            conf.sip = 0x08080808;  // 8.8.8.8
+            conf.gwIp = 0x08080808;  // 8.8.8.8
             udpSend_( interfaceName, &conf );
         }
     }
 
     int     prefix = 31;
 
-    for ( unsigned diff = conf.sip ^ conf.dip; diff >>= 1; prefix-- ) {}
+    for ( unsigned diff = conf.gwIp ^ conf.myIp; diff >>= 1; prefix-- ) {}
 
     string  cmdDown( linkCommand_(interfaceName, "down") );
     string  cmdUp( linkCommand_(interfaceName, "up") );
-    string  cmdMac( macCommand_(interfaceName, (conf.dmac[0] & 1)? newMac : conf.dmac) );
+    string  cmdMac( macCommand_(interfaceName, (conf.myMac[0] & 1)? newMac : conf.myMac) );
     string  cmdIpClear( ipClearCommand_(interfaceName) );
-    string  cmdIpAdd( ipAddCommand_(interfaceName, conf.dip, prefix) );
-    string  cmdRoute0( routeCommand_("0.0.0.0/1", conf.sip) );
-    string  cmdRoute128( routeCommand_("128.0.0.0/1", conf.sip) );
+    string  cmdIpAdd( ipAddCommand_(interfaceName, conf.myIp, prefix) );
+    string  cmdRoute0( routeCommand_("0.0.0.0/1", conf.gwIp) );
+    string  cmdRoute128( routeCommand_("128.0.0.0/1", conf.gwIp) );
 
     if ( execMode )
     {
