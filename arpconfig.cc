@@ -43,7 +43,7 @@ constexpr const char*   FILTER_STRING_  = "inbound and (arp or ip)";
 constexpr const char*   IP_UTILITY_     = "ip";
 constexpr const int     CAP_LENGTH_     = 80;
 
-struct PacketMetadata
+struct ConfigData
 {
     uint8_t             smac[ 6 ]       = { 0 };
     uint8_t             dmac[ 6 ]       = { 0 };
@@ -136,7 +136,7 @@ bootpSend_( const char* interfaceName, const uint8_t* smac )
 
 /**************************************************************************************************************/
 static void
-udpSend_( const char* interfaceName, const PacketMetadata* meta )
+udpSend_( const char* interfaceName, const ConfigData* conf )
 {
     static char     lnetErr[ LIBNET_ERRBUF_SIZE ];
     libnet_t*       lnet = libnet_init( LIBNET_LINK, interfaceName, lnetErr );
@@ -146,8 +146,8 @@ udpSend_( const char* interfaceName, const PacketMetadata* meta )
         static uint8_t  payload[ 32 ] = { 0 };
 
         libnet_build_udp( 33427, 33434, 40, 0, payload, sizeof(payload), lnet, 0 );
-        libnet_build_ipv4( 60, 0, 0x34ad, 0, 1, 17, 0, htonl(meta->dip), htonl(meta->sip), nullptr, 0, lnet, 0 );
-        libnet_build_ethernet( meta->smac, meta->dmac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
+        libnet_build_ipv4( 60, 0, 0x34ad, 0, 1, 17, 0, htonl(conf->dip), htonl(conf->sip), nullptr, 0, lnet, 0 );
+        libnet_build_ethernet( conf->smac, conf->dmac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
         libnet_write( lnet );
         libnet_destroy( lnet );
     }
@@ -162,36 +162,36 @@ packetProcessing_
     const uint8_t*              packet
 )
 {
-    PacketMetadata*     meta = reinterpret_cast<PacketMetadata*>( userData );
+    ConfigData*     conf = reinterpret_cast<ConfigData*>( userData );
 
-    memcpy( meta->smac, packet + 6, sizeof(meta->smac) );
-    memcpy( meta->dmac, packet, sizeof(meta->dmac) );
+    memcpy( conf->smac, packet + 6, sizeof(conf->smac) );
+    memcpy( conf->dmac, packet, sizeof(conf->dmac) );
 
     if ( memcmp(packet+12, "\x8\x6\0\x1", 4) == 0 )
     {
         // ARP
-        meta->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 28) );
-        meta->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 38) );
-        meta->shouldConfigure = ( meta->sip != meta->dip );
-        meta->shouldTest = false;
+        conf->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 28) );
+        conf->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 38) );
+        conf->shouldConfigure = ( conf->sip != conf->dip );
+        conf->shouldTest = false;
         return;
     }
     
     if ( memcmp(packet+34, "\0\x43\0\x44", 4) == 0 && memcmp(packet+46, "\0\0\0\x9", 4) == 0 )
     {
         // BOOTP reply
-        meta->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
-        meta->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) );
-        meta->shouldConfigure = true;
-        meta->shouldTest = false;
+        conf->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
+        conf->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) );
+        conf->shouldConfigure = true;
+        conf->shouldTest = false;
         return;
     }
 
     // UDP test for unicast packet then check response for ICMP type 11 or type 3 code 3
-    meta->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
-    meta->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 30) );
-    meta->shouldConfigure = ( packet[23] == 1 && (packet[34] == 11 || (packet[34]==3 && packet[35]==3)) );
-    meta->shouldTest = ( !meta->shouldConfigure && (meta->dmac[0] & 1) == 0 );
+    conf->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
+    conf->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 30) );
+    conf->shouldConfigure = ( packet[23] == 1 && (packet[34] == 11 || (packet[34]==3 && packet[35]==3)) );
+    conf->shouldTest = ( !conf->shouldConfigure && (conf->dmac[0] & 1) == 0 );
 }
 
 /**************************************************************************************************************/
@@ -268,12 +268,12 @@ main( int argc, char* argv[] )
 
     struct timespec     ts;
     uint8_t             newMac[ 6 ] = { 0x0, 0xe0, 0x4c };  // Realtek OUI
-    PacketMetadata      meta;
+    ConfigData          conf;
 
     clock_gettime( CLOCK_MONOTONIC_RAW, &ts );
     memcpy( newMac + 3, &ts.tv_nsec, 3 );
 
-    while ( !meta.shouldConfigure )
+    while ( !conf.shouldConfigure )
     {
         static int  cycle = 0;
 
@@ -282,29 +282,29 @@ main( int argc, char* argv[] )
             bootpSend_( interfaceName, newMac );
         }
 
-        if ( pcap_dispatch(pcap, 1, packetProcessing_, reinterpret_cast<uint8_t*>(&meta)) <= 0 )
+        if ( pcap_dispatch(pcap, 1, packetProcessing_, reinterpret_cast<uint8_t*>(&conf)) <= 0 )
         {
             usleep( 100000 );       // 0.1 seconds
             continue;
         }
 
-        if ( meta.shouldTest )
+        if ( conf.shouldTest )
         {
-            udpSend_( interfaceName, &meta );
+            udpSend_( interfaceName, &conf );
         }
     }
 
     int     prefix = 31;
 
-    for ( unsigned diff = meta.sip ^ meta.dip; diff >>= 1; prefix-- ) {}
+    for ( unsigned diff = conf.sip ^ conf.dip; diff >>= 1; prefix-- ) {}
 
     string  cmdDown( linkCommand_(interfaceName, "down") );
     string  cmdUp( linkCommand_(interfaceName, "up") );
-    string  cmdMac( macCommand_(interfaceName, (meta.dmac[0] & 1)? newMac : meta.dmac) );
+    string  cmdMac( macCommand_(interfaceName, (conf.dmac[0] & 1)? newMac : conf.dmac) );
     string  cmdIpClear( ipClearCommand_(interfaceName) );
-    string  cmdIpAdd( ipAddCommand_(interfaceName, meta.dip, prefix) );
-    string  cmdRoute0( routeCommand_("0.0.0.0/1", meta.sip) );
-    string  cmdRoute128( routeCommand_("128.0.0.0/1", meta.sip) );
+    string  cmdIpAdd( ipAddCommand_(interfaceName, conf.dip, prefix) );
+    string  cmdRoute0( routeCommand_("0.0.0.0/1", conf.sip) );
+    string  cmdRoute128( routeCommand_("128.0.0.0/1", conf.sip) );
 
     if ( execMode )
     {
