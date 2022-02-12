@@ -172,8 +172,8 @@ packetProcessing_
         // ARP
         conf->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 28) );
         conf->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 38) );
-        conf->shouldConfigure = ( conf->sip != conf->dip );
-        conf->shouldTest = false;
+        conf->shouldConfigure = false;
+        conf->shouldTest = ( conf->sip != conf->dip );
         return;
     }
     
@@ -182,8 +182,8 @@ packetProcessing_
         // BOOTP reply
         conf->sip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
         conf->dip = ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) );
-        conf->shouldConfigure = true;
-        conf->shouldTest = false;
+        conf->shouldConfigure = false;
+        conf->shouldTest = true;
         return;
     }
 
@@ -290,6 +290,12 @@ main( int argc, char* argv[] )
 
         if ( conf.shouldTest )
         {
+            if ( conf.dmac[0] & 1 )
+            {
+                memcpy( conf.dmac, newMac, sizeof(conf.dmac) );;
+            }
+
+            conf.sip = 0x08080808;  // 8.8.8.8
             udpSend_( interfaceName, &conf );
         }
     }
