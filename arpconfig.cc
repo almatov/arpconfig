@@ -47,11 +47,23 @@ struct ConfigData
 {
     uint8_t             myMac[ 6 ]      = { 0 };
     uint8_t             gwMac[ 6 ]      = { 0 };
+    uint8_t             randomMac[ 6 ]  = { 0x0, 0xe0, 0x4c };  // Realtek OUI
     uint32_t            myIp            = 0;
     uint32_t            gwIp            = 0;
     bool                shouldConfigure = false;
     bool                shouldTest      = false;
+
+                        ConfigData();
 };
+
+/**************************************************************************************************************/
+ConfigData::ConfigData()
+{
+    struct timespec     ts;
+
+    clock_gettime( CLOCK_MONOTONIC_RAW, &ts );
+    memcpy( randomMac + 3, &ts.tv_nsec, 3 );
+}
 
 /**************************************************************************************************************/
 static string
@@ -163,9 +175,10 @@ packetProcessing_
 )
 {
     ConfigData*     conf = reinterpret_cast<ConfigData*>( userData );
+    const uint8_t*  dmac = packet;
 
     memcpy( conf->gwMac, packet + 6, sizeof(conf->gwMac) );
-    memcpy( conf->myMac, packet, sizeof(conf->myMac) );
+    memcpy( conf->myMac, ((dmac[0]&1)? conf->randomMac : dmac), sizeof(conf->myMac) );
 
     if ( memcmp(packet+12, "\x8\x6\0\x1", 4) == 0 )
     {
@@ -191,7 +204,7 @@ packetProcessing_
     conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
     conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 30) );
     conf->shouldConfigure = ( packet[23] == 1 && (packet[34] == 11 || (packet[34]==3 && packet[35]==3)) );
-    conf->shouldTest = ( !conf->shouldConfigure && (conf->myMac[0] & 1) == 0 );
+    conf->shouldTest = ( !conf->shouldConfigure && (dmac[0] & 1) == 0 );
 }
 
 /**************************************************************************************************************/
@@ -266,12 +279,7 @@ main( int argc, char* argv[] )
         return EXIT_FAILURE;
     }
 
-    struct timespec     ts;
-    uint8_t             newMac[ 6 ] = { 0x0, 0xe0, 0x4c };  // Realtek OUI
-    ConfigData          conf;
-
-    clock_gettime( CLOCK_MONOTONIC_RAW, &ts );
-    memcpy( newMac + 3, &ts.tv_nsec, 3 );
+    ConfigData  conf;
 
     while ( !conf.shouldConfigure )
     {
@@ -279,7 +287,7 @@ main( int argc, char* argv[] )
 
         if ( ++cycle % 400 == 0 )   // about 40 seconds
         {
-            bootpSend_( interfaceName, newMac );
+            bootpSend_( interfaceName, conf.randomMac );
         }
 
         if ( pcap_dispatch(pcap, 1, packetProcessing_, reinterpret_cast<uint8_t*>(&conf)) <= 0 )
@@ -290,11 +298,6 @@ main( int argc, char* argv[] )
 
         if ( conf.shouldTest )
         {
-            if ( conf.myMac[0] & 1 )
-            {
-                memcpy( conf.myMac, newMac, sizeof(conf.myMac) );;
-            }
-
             conf.gwIp = 0x08080808;  // 8.8.8.8
             udpSend_( interfaceName, &conf );
         }
@@ -306,7 +309,7 @@ main( int argc, char* argv[] )
 
     string  cmdDown( linkCommand_(interfaceName, "down") );
     string  cmdUp( linkCommand_(interfaceName, "up") );
-    string  cmdMac( macCommand_(interfaceName, (conf.myMac[0] & 1)? newMac : conf.myMac) );
+    string  cmdMac( macCommand_(interfaceName, conf.myMac) );
     string  cmdIpClear( ipClearCommand_(interfaceName) );
     string  cmdIpAdd( ipAddCommand_(interfaceName, conf.myIp, prefix) );
     string  cmdRoute0( routeCommand_("0.0.0.0/1", conf.gwIp) );
