@@ -54,6 +54,7 @@ struct ConfigData
     bool                shouldTest      = false;
 
                         ConfigData();
+    void                gatewayTest( const char* interfaceName );
 };
 
 /**************************************************************************************************************/
@@ -63,6 +64,26 @@ ConfigData::ConfigData()
 
     clock_gettime( CLOCK_MONOTONIC_RAW, &ts );
     memcpy( randomMac + 3, &ts.tv_nsec, 3 );
+}
+
+/**************************************************************************************************************/
+void
+ConfigData::gatewayTest( const char* interfaceName )
+{
+    static char     lnetErr[ LIBNET_ERRBUF_SIZE ];
+    libnet_t*       lnet = libnet_init( LIBNET_LINK, interfaceName, lnetErr );
+
+    if ( lnet != nullptr )
+    {
+        static uint8_t  payload[ 32 ] = { 0 };
+        uint32_t        dip = 0x08080808;                                   // 8.8.8.8
+
+        libnet_build_udp( 33427, 33434, 40, 0, payload, sizeof(payload), lnet, 0 );
+        libnet_build_ipv4( 60, 0, 0x34ad, 0, 1, 17, 0, htonl(myIp), htonl(dip), nullptr, 0, lnet, 0 );
+        libnet_build_ethernet( gwMac, myMac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
+        libnet_write( lnet );
+        libnet_destroy( lnet );
+    }
 }
 
 /**************************************************************************************************************/
@@ -141,25 +162,6 @@ bootpSend_( const char* interfaceName, const uint8_t* smac )
         libnet_build_udp( 68, 67, 308, 0, nullptr, 0, lnet, 0 );
         libnet_build_ipv4( 328, 0, 0, 0, 8, 17, 0, htonl(sip), htonl(dip), nullptr, 0, lnet, 0 );
         libnet_build_ethernet( dmac, smac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
-        libnet_write( lnet );
-        libnet_destroy( lnet );
-    }
-}
-
-/**************************************************************************************************************/
-static void
-udpSend_( const char* interfaceName, const ConfigData* conf )
-{
-    static char     lnetErr[ LIBNET_ERRBUF_SIZE ];
-    libnet_t*       lnet = libnet_init( LIBNET_LINK, interfaceName, lnetErr );
-
-    if ( lnet != nullptr )
-    {
-        static uint8_t  payload[ 32 ] = { 0 };
-
-        libnet_build_udp( 33427, 33434, 40, 0, payload, sizeof(payload), lnet, 0 );
-        libnet_build_ipv4( 60, 0, 0x34ad, 0, 1, 17, 0, htonl(conf->myIp), htonl(conf->gwIp), nullptr, 0, lnet, 0 );
-        libnet_build_ethernet( conf->gwMac, conf->myMac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
         libnet_write( lnet );
         libnet_destroy( lnet );
     }
@@ -298,8 +300,7 @@ main( int argc, char* argv[] )
 
         if ( conf.shouldTest )
         {
-            conf.gwIp = 0x08080808;  // 8.8.8.8
-            udpSend_( interfaceName, &conf );
+            conf.gatewayTest( interfaceName );
         }
     }
 
