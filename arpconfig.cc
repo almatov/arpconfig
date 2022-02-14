@@ -38,7 +38,7 @@ using std::setw;
 using std::string;
 using std::ostringstream;
 
-constexpr const char*   VERSION_        = "0.1";
+constexpr const char*   VERSION_        = "0.2";
 constexpr const char*   FILTER_STRING_  = "inbound and (arp or ip)";
 constexpr const char*   IP_UTILITY_     = "ip";
 constexpr const int     CAP_LENGTH_     = 80;
