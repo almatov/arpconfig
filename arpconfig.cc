@@ -54,6 +54,7 @@ struct ConfigData
     bool                shouldTest      = false;
 
                         ConfigData();
+    void                bootpProvocate( const char* interfaceName );
     void                gatewayTest( const char* interfaceName );
 };
 
@@ -64,6 +65,29 @@ ConfigData::ConfigData()
 
     clock_gettime( CLOCK_MONOTONIC_RAW, &ts );
     memcpy( randomMac + 3, &ts.tv_nsec, 3 );
+}
+
+/**************************************************************************************************************/
+void
+ConfigData::bootpProvocate( const char* interfaceName )
+{
+    static char     lnetErr[ LIBNET_ERRBUF_SIZE ];
+    libnet_t*       lnet = libnet_init( LIBNET_LINK, interfaceName, lnetErr );
+
+    if ( lnet != nullptr )
+    {
+        static uint8_t  payload[ 60 ] = { 53, 1, 1, 255, 0 };               // RFC2132 DHCPDISCOVER
+        uint32_t        sip = 0;                                            // 0.0.0.0
+        uint32_t        dip = 0xffffffff;                                   // 255.255.255.255
+        uint8_t         dmac[ 6 ] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }; // broadcast MAC
+
+        libnet_build_bootpv4( 1, 1, 6, 0, 9, 0, 0, 0, 0, 0, 0, randomMac, nullptr, nullptr, payload, sizeof(payload), lnet, 0 ); 
+        libnet_build_udp( 68, 67, 308, 0, nullptr, 0, lnet, 0 );
+        libnet_build_ipv4( 328, 0, 0, 0, 8, 17, 0, htonl(sip), htonl(dip), nullptr, 0, lnet, 0 );
+        libnet_build_ethernet( dmac, randomMac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
+        libnet_write( lnet );
+        libnet_destroy( lnet );
+    }
 }
 
 /**************************************************************************************************************/
@@ -142,29 +166,6 @@ routeCommand_( const char* netString, uint32_t gw )
         ( gw >> 24 ) << "." << ( (gw >> 16) & 0xff ) << "." << ( (gw >> 8) & 0xff ) << "." << ( gw & 0xff );
 
     return move( oss.str() );
-}
-
-/**************************************************************************************************************/
-static void
-bootpSend_( const char* interfaceName, const uint8_t* smac )
-{
-    static char     lnetErr[ LIBNET_ERRBUF_SIZE ];
-    libnet_t*       lnet = libnet_init( LIBNET_LINK, interfaceName, lnetErr );
-
-    if ( lnet != nullptr )
-    {
-        static uint8_t  payload[ 60 ] = { 53, 1, 1, 255, 0 };               // RFC2132 DHCPDISCOVER
-        uint32_t        sip = 0;                                            // 0.0.0.0
-        uint32_t        dip = 0xffffffff;                                   // 255.255.255.255
-        uint8_t         dmac[ 6 ] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }; // broadcast MAC
-
-        libnet_build_bootpv4( 1, 1, 6, 0, 9, 0, 0, 0, 0, 0, 0, smac, nullptr, nullptr, payload, sizeof(payload), lnet, 0 ); 
-        libnet_build_udp( 68, 67, 308, 0, nullptr, 0, lnet, 0 );
-        libnet_build_ipv4( 328, 0, 0, 0, 8, 17, 0, htonl(sip), htonl(dip), nullptr, 0, lnet, 0 );
-        libnet_build_ethernet( dmac, smac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
-        libnet_write( lnet );
-        libnet_destroy( lnet );
-    }
 }
 
 /**************************************************************************************************************/
@@ -289,7 +290,7 @@ main( int argc, char* argv[] )
 
         if ( ++cycle % 400 == 0 )   // about 40 seconds
         {
-            bootpSend_( interfaceName, conf.randomMac );
+            conf.bootpProvocate( interfaceName );
         }
 
         if ( pcap_dispatch(pcap, 1, packetProcessing_, reinterpret_cast<uint8_t*>(&conf)) <= 0 )
