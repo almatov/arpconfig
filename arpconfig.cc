@@ -182,13 +182,12 @@ packetProcessing_
 
     memcpy( conf->gwMac, packet + 6, sizeof(conf->gwMac) );
     memcpy( conf->myMac, ((dmac[0]&1)? conf->randomMac : dmac), sizeof(conf->myMac) );
+    conf->shouldConfigure = false;
 
     if ( memcmp(packet+12, "\x8\x6\0\x1", 4) == 0 )
     {
         // ARP
-        conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 28) );
         conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 38) );
-        conf->shouldConfigure = false;
         conf->shouldTest = ( conf->gwIp != conf->myIp );
         return;
     }
@@ -196,18 +195,30 @@ packetProcessing_
     if ( memcmp(packet+34, "\0\x43\0\x44", 4) == 0 && memcmp(packet+46, "\0\0\0\x9", 4) == 0 )
     {
         // BOOTP reply
-        conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
         conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) );
-        conf->shouldConfigure = false;
         conf->shouldTest = true;
         return;
     }
 
-    // UDP test for unicast packet then check response for ICMP type 11 or type 3 code 3
-    conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
+    // any packet
     conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 30) );
-    conf->shouldConfigure = ( packet[23] == 1 && (packet[34] == 11 || (packet[34]==3 && packet[35]==3)) );
-    conf->shouldTest = ( !conf->shouldConfigure && (dmac[0] & 1) == 0 );
+    conf->shouldTest = !( dmac[0] & 1 );
+
+    if
+    (
+        packet[ 23 ] == 1 &&                                                        // ICMP
+        ( packet[34] == 11 || (packet[34] == 3 && packet[35] == 3) ) &&             // type, code
+        ntohl( *reinterpret_cast<const uint32_t*>(packet + 54) ) == conf->myIp &&   // sender IP
+        ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) ) == 0x08080808 &&   // destination IP
+        ntohs( *reinterpret_cast<const uint16_t*>(packet + 62) ) == 33427 &&        // sender port
+        ntohs( *reinterpret_cast<const uint16_t*>(packet + 64) ) == 33434           // destination port
+    )
+    {
+        // test response
+        conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
+        conf->shouldConfigure = true;
+        conf->shouldTest = false;
+    }
 }
 
 /**************************************************************************************************************/
