@@ -50,10 +50,12 @@ struct ConfigData
     uint8_t             randomMac[ 6 ]  = { 0x0, 0xe0, 0x4c };  // Realtek OUI
     uint32_t            myIp            = 0;
     uint32_t            gwIp            = 0;
+    bool                isArpRequest    = false;
     bool                shouldConfigure = false;
     bool                shouldTest      = false;
 
                         ConfigData();
+    void                arpReply( const char* interfaceName );
     void                bootpProvocate( const char* interfaceName );
     void                gatewayTest( const char* interfaceName );
 };
@@ -65,6 +67,27 @@ ConfigData::ConfigData()
 
     clock_gettime( CLOCK_MONOTONIC_RAW, &ts );
     memcpy( randomMac + 3, &ts.tv_nsec, 3 );
+}
+
+/**************************************************************************************************************/
+void
+ConfigData::arpReply( const char* interfaceName )
+{
+    static char     lnetErr[ LIBNET_ERRBUF_SIZE ];
+    libnet_t*       lnet = libnet_init( LIBNET_LINK, interfaceName, lnetErr );
+
+    if ( lnet != nullptr )
+    {
+        uint32_t        beSip = htonl( myIp );
+        uint32_t        beDip = htonl( gwIp );
+        const uint8_t*  sip = reinterpret_cast<const uint8_t*>( &beSip );
+        const uint8_t*  dip = reinterpret_cast<const uint8_t*>( &beDip );
+
+        libnet_autobuild_arp( ARPOP_REPLY, myMac, sip, gwMac, dip, lnet );
+        libnet_build_ethernet( gwMac, myMac, ETHERTYPE_ARP, nullptr, 0, lnet, 0 );
+        libnet_write( lnet );
+        libnet_destroy( lnet );
+    }
 }
 
 /**************************************************************************************************************/
@@ -182,12 +205,15 @@ packetProcessing_
 
     memcpy( conf->gwMac, packet + 6, sizeof(conf->gwMac) );
     memcpy( conf->myMac, ((dmac[0]&1)? conf->randomMac : dmac), sizeof(conf->myMac) );
+    conf->isArpRequest = false;
     conf->shouldConfigure = false;
 
     if ( memcmp(packet+12, "\x8\x6\0\x1", 4) == 0 )
     {
-        // ARP
+        // ARP request
+        conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 28) );
         conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 38) );
+        conf->isArpRequest = true;
         conf->shouldTest = ( conf->gwIp != conf->myIp );
         return;
     }
@@ -195,12 +221,14 @@ packetProcessing_
     if ( memcmp(packet+34, "\0\x43\0\x44", 4) == 0 && memcmp(packet+46, "\0\0\0\x9", 4) == 0 )
     {
         // BOOTP reply
+        conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
         conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) );
         conf->shouldTest = true;
         return;
     }
 
     // any packet
+    conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
     conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 30) );
     conf->shouldTest = !( dmac[0] & 1 );
 
@@ -214,7 +242,7 @@ packetProcessing_
         ntohs( *reinterpret_cast<const uint16_t*>(packet + 64) ) == 33434           // destination port
     )
     {
-        // test response
+        // gateway response
         conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
         conf->shouldConfigure = true;
         conf->shouldTest = false;
@@ -308,6 +336,11 @@ main( int argc, char* argv[] )
         {
             usleep( 100000 );       // 0.1 seconds
             continue;
+        }
+
+        if ( conf.isArpRequest )
+        {
+            conf.arpReply( interfaceName );
         }
 
         if ( conf.shouldTest )
