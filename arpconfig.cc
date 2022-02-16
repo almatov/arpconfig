@@ -21,6 +21,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <string>
 #include <sstream>
 #include <getopt.h>
@@ -33,6 +34,7 @@ using std::cerr;
 using std::cout;
 using std::endl;
 using std::hex;
+using std::map;
 using std::setfill;
 using std::setw;
 using std::string;
@@ -45,6 +47,7 @@ constexpr const int     CAP_LENGTH_     = 80;
 
 struct ConfigData
 {
+    uint16_t            id              = 13485;
     uint8_t             myMac[ 6 ]      = { 0 };
     uint8_t             gwMac[ 6 ]      = { 0 };
     uint8_t             randomMac[ 6 ]  = { 0x0, 0xe0, 0x4c };  // Realtek OUI
@@ -53,6 +56,7 @@ struct ConfigData
     bool                isArpRequest    = false;
     bool                shouldConfigure = false;
     bool                shouldTest      = false;
+    map<int, uint32_t>  gateways;
 
                         ConfigData();
     void                arpReply( const char* interfaceName );
@@ -126,7 +130,7 @@ ConfigData::gatewayTest( const char* interfaceName )
         uint32_t        dip = 0x08080808;                                   // 8.8.8.8
 
         libnet_build_udp( 33427, 33434, 40, 0, payload, sizeof(payload), lnet, 0 );
-        libnet_build_ipv4( 60, 0, 0x34ad, 0, 1, 17, 0, htonl(myIp), htonl(dip), nullptr, 0, lnet, 0 );
+        libnet_build_ipv4( 60, 0, id, 0, 1, 17, 0, htonl(myIp), htonl(dip), nullptr, 0, lnet, 0 );
         libnet_build_ethernet( gwMac, myMac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
         libnet_write( lnet );
         libnet_destroy( lnet );
@@ -203,6 +207,7 @@ packetProcessing_
     ConfigData*     conf = reinterpret_cast<ConfigData*>( userData );
     const uint8_t*  dmac = packet;
 
+    ++conf->id;
     memcpy( conf->gwMac, packet + 6, sizeof(conf->gwMac) );
     memcpy( conf->myMac, ((dmac[0]&1)? conf->randomMac : dmac), sizeof(conf->myMac) );
     conf->isArpRequest = false;
@@ -215,20 +220,19 @@ packetProcessing_
         conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 38) );
         conf->isArpRequest = true;
         conf->shouldTest = ( conf->gwIp != conf->myIp );
+        conf->gateways[ conf->id ] = conf->gwIp;
         return;
     }
     
     if ( memcmp(packet+34, "\0\x43\0\x44", 4) == 0 && memcmp(packet+46, "\0\0\0\x9", 4) == 0 )
     {
         // BOOTP reply
-        conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
         conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) );
         conf->shouldTest = true;
         return;
     }
 
     // any packet
-    conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
     conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 30) );
     conf->shouldTest = !( dmac[0] & 1 );
 
@@ -243,7 +247,10 @@ packetProcessing_
     )
     {
         // gateway response
-        conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
+        uint16_t    id = ntohs( *reinterpret_cast<const uint16_t*>(packet + 46) );
+        uint32_t    gw = conf->gateways[ id ];
+
+        conf->gwIp = ( gw != 0 )? gw : ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );;
         conf->shouldConfigure = true;
         conf->shouldTest = false;
     }
