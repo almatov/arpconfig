@@ -53,6 +53,7 @@ struct ConfigData
     uint8_t             randomMac[ 6 ]  = { 0x0, 0xe0, 0x4c };  // Realtek OUI
     uint32_t            myIp            = 0;
     uint32_t            gwIp            = 0;
+    int                 prefix          = 31;
     bool                isArpRequest    = false;
     bool                shouldConfigure = false;
     bool                shouldTest      = false;
@@ -212,15 +213,21 @@ packetProcessing_
     memcpy( conf->myMac, ((dmac[0]&1)? conf->randomMac : dmac), sizeof(conf->myMac) );
     conf->isArpRequest = false;
     conf->shouldConfigure = false;
+    conf->shouldTest = false;
 
     if ( memcmp(packet+12, "\x8\x6\0\x1", 4) == 0 )
     {
         // ARP request
         conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 28) );
         conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 38) );
-        conf->isArpRequest = true;
-        conf->shouldTest = ( conf->gwIp != conf->myIp );
-        conf->gateways[ conf->id ] = conf->gwIp;
+
+        if ( conf->gwIp != conf->myIp )
+        {
+            conf->gateways[ conf->id ] = conf->gwIp;
+            conf->isArpRequest = true;
+            conf->shouldTest = true;
+        }
+
         return;
     }
     
@@ -247,12 +254,22 @@ packetProcessing_
     )
     {
         // gateway response
-        uint16_t    id = ntohs( *reinterpret_cast<const uint16_t*>(packet + 46) );
-        uint32_t    gw = conf->gateways[ id ];
+        conf->gwIp = conf->gateways[ ntohs(*reinterpret_cast<const uint16_t*>(packet+46)) ];
 
-        conf->gwIp = ( gw != 0 )? gw : ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );;
-        conf->shouldConfigure = true;
-        conf->shouldTest = false;
+        if ( conf->gwIp == 0 )
+        {
+            conf->gwIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 26) );
+        }
+
+        conf->prefix = 31;
+
+        for ( unsigned diff = conf->gwIp ^ conf->myIp; diff >>= 1; conf->prefix-- ) {}
+
+        if ( conf->prefix >= 20 )
+        {
+            conf->shouldConfigure = true;
+            conf->shouldTest = false;
+        }
     }
 }
 
@@ -348,6 +365,7 @@ main( int argc, char* argv[] )
         if ( conf.isArpRequest )
         {
             conf.arpReply( interfaceName );
+            usleep( 100000 );       // 0.1 seconds
         }
 
         if ( conf.shouldTest )
@@ -356,15 +374,11 @@ main( int argc, char* argv[] )
         }
     }
 
-    int     prefix = 31;
-
-    for ( unsigned diff = conf.gwIp ^ conf.myIp; diff >>= 1; prefix-- ) {}
-
     string  cmdDown( linkCommand_(interfaceName, "down") );
     string  cmdUp( linkCommand_(interfaceName, "up") );
     string  cmdMac( macCommand_(interfaceName, conf.myMac) );
     string  cmdIpClear( ipClearCommand_(interfaceName) );
-    string  cmdIpAdd( ipAddCommand_(interfaceName, conf.myIp, prefix) );
+    string  cmdIpAdd( ipAddCommand_(interfaceName, conf.myIp, conf.prefix) );
     string  cmdRoute0( routeCommand_("0.0.0.0/1", conf.gwIp) );
     string  cmdRoute128( routeCommand_("128.0.0.0/1", conf.gwIp) );
 
