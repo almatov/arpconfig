@@ -246,7 +246,7 @@ packetProcessing_
     if
     (
         packet[ 23 ] == 1 &&                                                        // ICMP
-        ( packet[34] == 11 || (packet[34] == 3 && packet[35] == 3) ) &&             // type, code
+        ( packet[34] == 11 || packet[34] == 3 ) &&                                  // type
         ntohl( *reinterpret_cast<const uint32_t*>(packet + 54) ) == conf->myIp &&   // sender IP
         ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) ) == 0x08080808 &&   // destination IP
         ntohs( *reinterpret_cast<const uint16_t*>(packet + 62) ) == 33427 &&        // sender port
