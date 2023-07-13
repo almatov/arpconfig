@@ -1,16 +1,16 @@
 # arpconfig utility
 
-This is a C++ written utility that use ARP information to configure interface
-with the free IP address in the internal wire network. It tries to predict
-ARP values by listening to incoming packets. The utility was compiled and
-tested under the Armbian Linux. But it should be work under any other Linux
-system. The utility uses the ip command to configure interface.
+This is a C++ writtten utility that helps to obtain IP address when the network has no DHCP/BOOTP server.
+
+The utility analizes incoming packets to find free IP address. It can use ARP requests to predict unused IP addresses. Then the utility changes MAC and IP addresses on the interface according found ARP information.
+
+This utility was compiled and tested in Armbian Linux, but it should work in any other Linux system. This utility uses the ip command to configure the interface.
 
 ## How to install
 
 Software requirements:
 
-	g++-6.3.0+	(apt install build-essential)
+	g++-6.3.0+      (apt install build-essential)
 	libpcap-1.8.1+ 	(apt install libpcap-dev)
 	libnet-1.1.6+ 	(apt install libnet1-dev)
 

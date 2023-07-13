@@ -40,7 +40,7 @@ using std::setw;
 using std::string;
 using std::ostringstream;
 
-constexpr const char*   VERSION_        = "0.2";
+constexpr const char*   VERSION_        = "0.3";
 constexpr const char*   FILTER_STRING_  = "inbound and (arp or ip)";
 constexpr const char*   IP_UTILITY_     = "ip";
 constexpr const int     CAP_LENGTH_     = 80;
@@ -104,7 +104,7 @@ ConfigData::gatewayTest( const char* interfaceName )
     if ( lnet != nullptr )
     {
         static uint8_t  payload[ 32 ] = { 0 };
-        uint32_t        dip = 0x08080808;                                   // 8.8.8.8
+        uint32_t        dip = 0x08080808;   // 8.8.8.8
 
         libnet_build_udp( 33427, 33434, 40, 0, payload, sizeof(payload), lnet, 0 );
         libnet_build_ipv4( 60, 0, id, 0, 1, 17, 0, htonl(myIp), htonl(dip), nullptr, 0, lnet, 0 );
@@ -319,14 +319,14 @@ main( int argc, char* argv[] )
     {
         if ( pcap_dispatch(pcap, 1, packetProcessing_, reinterpret_cast<uint8_t*>(&conf)) <= 0 )
         {
-            usleep( 100000 );       // 0.1 seconds
+            usleep( 100000 );   // 0.1 seconds
             continue;
         }
 
         if ( conf.isArpRequest )
         {
             conf.arpReply( interfaceName );
-            usleep( 100000 );       // 0.1 seconds
+            usleep( 100000 );   // 0.1 seconds
         }
 
         if ( conf.shouldTest )
