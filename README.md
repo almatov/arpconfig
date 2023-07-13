@@ -2,11 +2,9 @@
 
 This is a C++ written utility that use ARP information to configure interface
 with the free IP address in the internal wire network. It tries to predict
-ARP values by listening to incoming packets. When unsuccessful, it tries to
-provocate ARP requests. The utility uses a predicted MAC address or generates
-a random MAC address of a popular vendor. The utility was compiled and tested
-under the Armbian Linux. But it should be work under any other Linux system.
-The utility uses the ip command to configure interface.
+ARP values by listening to incoming packets. The utility was compiled and
+tested under the Armbian Linux. But it should be work under any other Linux
+system. The utility uses the ip command to configure interface.
 
 ## How to install
 

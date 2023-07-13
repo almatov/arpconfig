@@ -2,7 +2,7 @@
 ****************************************************************************************************************
 ****************************************************************************************************************
 
-    Copyright (C) 2022 Askar Almatov
+    Copyright (C) 2022, 2023 Askar Almatov
 
     This program is free software: you can redistribute it and/or modify it under the terms of the GNU General
     Public License as published by the Free Software Foundation, either version 3 of the License, or (at your
@@ -61,7 +61,6 @@ struct ConfigData
 
                         ConfigData();
     void                arpReply( const char* interfaceName );
-    void                bootpProvocate( const char* interfaceName );
     void                gatewayTest( const char* interfaceName );
 };
 
@@ -90,29 +89,6 @@ ConfigData::arpReply( const char* interfaceName )
 
         libnet_autobuild_arp( ARPOP_REPLY, myMac, sip, gwMac, dip, lnet );
         libnet_build_ethernet( gwMac, myMac, ETHERTYPE_ARP, nullptr, 0, lnet, 0 );
-        libnet_write( lnet );
-        libnet_destroy( lnet );
-    }
-}
-
-/**************************************************************************************************************/
-void
-ConfigData::bootpProvocate( const char* interfaceName )
-{
-    static char     lnetErr[ LIBNET_ERRBUF_SIZE ];
-    libnet_t*       lnet = libnet_init( LIBNET_LINK, interfaceName, lnetErr );
-
-    if ( lnet != nullptr )
-    {
-        static uint8_t  payload[ 60 ] = { 53, 1, 1, 255, 0 };               // RFC2132 DHCPDISCOVER
-        uint32_t        sip = 0;                                            // 0.0.0.0
-        uint32_t        dip = 0xffffffff;                                   // 255.255.255.255
-        uint8_t         dmac[ 6 ] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }; // broadcast MAC
-
-        libnet_build_bootpv4( 1, 1, 6, 0, 9, 0, 0, 0, 0, 0, 0, randomMac, nullptr, nullptr, payload, sizeof(payload), lnet, 0 ); 
-        libnet_build_udp( 68, 67, 308, 0, nullptr, 0, lnet, 0 );
-        libnet_build_ipv4( 328, 0, 0, 0, 8, 17, 0, htonl(sip), htonl(dip), nullptr, 0, lnet, 0 );
-        libnet_build_ethernet( dmac, randomMac, ETHERTYPE_IP, nullptr, 0, lnet, 0 );
         libnet_write( lnet );
         libnet_destroy( lnet );
     }
@@ -231,14 +207,6 @@ packetProcessing_
         return;
     }
     
-    if ( memcmp(packet+34, "\0\x43\0\x44", 4) == 0 && memcmp(packet+46, "\0\0\0\x9", 4) == 0 )
-    {
-        // BOOTP reply
-        conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 58) );
-        conf->shouldTest = true;
-        return;
-    }
-
     // any packet
     conf->myIp = ntohl( *reinterpret_cast<const uint32_t*>(packet + 30) );
     conf->shouldTest = !( dmac[0] & 1 );
@@ -349,13 +317,6 @@ main( int argc, char* argv[] )
 
     while ( !conf.shouldConfigure )
     {
-        static int  cycle = 0;
-
-        if ( ++cycle % 400 == 0 )   // about 40 seconds
-        {
-            conf.bootpProvocate( interfaceName );
-        }
-
         if ( pcap_dispatch(pcap, 1, packetProcessing_, reinterpret_cast<uint8_t*>(&conf)) <= 0 )
         {
             usleep( 100000 );       // 0.1 seconds
