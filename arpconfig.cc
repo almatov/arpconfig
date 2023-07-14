@@ -40,7 +40,7 @@ using std::setw;
 using std::string;
 using std::ostringstream;
 
-constexpr const char*   VERSION_        = "0.3";
+constexpr const char*   VERSION_        = "0.4";
 constexpr const char*   FILTER_STRING_  = "inbound and (arp or ip)";
 constexpr const char*   IP_UTILITY_     = "ip";
 constexpr const int     CAP_LENGTH_     = 80;
@@ -342,6 +342,8 @@ main( int argc, char* argv[] )
     string  cmdIpAdd( ipAddCommand_(interfaceName, conf.myIp, conf.prefix) );
     string  cmdRoute0( routeCommand_("0.0.0.0/1", conf.gwIp) );
     string  cmdRoute128( routeCommand_("128.0.0.0/1", conf.gwIp) );
+
+    sleep( 2 ); // time to kill this process
 
     if ( execMode )
     {

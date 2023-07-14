@@ -1,6 +1,6 @@
 # arpconfig utility
 
-This is a C++ writtten utility that helps to obtain IP address when the network has no DHCP/BOOTP server.
+This is a C++ writtten utility that helps to obtain IP address when the network has no DHCP/BOOTP server. The program can be started simultaneously with DHCP client and then can be killed on the exit hook.
 
 The utility analizes incoming packets to find free IP address. It can use ARP requests to predict unused IP addresses. Then the utility changes MAC and IP addresses on the interface according found ARP information.
 
