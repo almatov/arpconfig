@@ -343,7 +343,7 @@ main( int argc, char* argv[] )
     string  cmdRoute0( routeCommand_("0.0.0.0/1", conf.gwIp) );
     string  cmdRoute128( routeCommand_("128.0.0.0/1", conf.gwIp) );
 
-    sleep( 2 ); // time to kill this process
+    sleep( 10 ); // time to kill this process
 
     if ( execMode )
     {
