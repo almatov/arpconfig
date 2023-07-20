@@ -82,10 +82,10 @@ ConfigData::arpReply( const char* interfaceName )
 
     if ( lnet != nullptr )
     {
-        uint32_t        beSip = htonl( myIp );
-        uint32_t        beDip = htonl( gwIp );
-        const uint8_t*  sip = reinterpret_cast<const uint8_t*>( &beSip );
-        const uint8_t*  dip = reinterpret_cast<const uint8_t*>( &beDip );
+        uint32_t    beSip = htonl( myIp );
+        uint32_t    beDip = htonl( gwIp );
+        int8_t*     sip = reinterpret_cast<uint8_t*>( &beSip );
+        int8_t*     dip = reinterpret_cast<uint8_t*>( &beDip );
 
         libnet_autobuild_arp( ARPOP_REPLY, myMac, sip, gwMac, dip, lnet );
         libnet_build_ethernet( gwMac, myMac, ETHERTYPE_ARP, nullptr, 0, lnet, 0 );
