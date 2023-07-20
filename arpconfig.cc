@@ -40,7 +40,7 @@ using std::setw;
 using std::string;
 using std::ostringstream;
 
-constexpr const char*   VERSION_        = "0.4";
+constexpr const char*   VERSION_        = "0.5";
 constexpr const char*   FILTER_STRING_  = "inbound and (arp or ip)";
 constexpr const char*   IP_UTILITY_     = "ip";
 constexpr const int     CAP_LENGTH_     = 80;
@@ -84,8 +84,8 @@ ConfigData::arpReply( const char* interfaceName )
     {
         uint32_t    beSip = htonl( myIp );
         uint32_t    beDip = htonl( gwIp );
-        int8_t*     sip = reinterpret_cast<uint8_t*>( &beSip );
-        int8_t*     dip = reinterpret_cast<uint8_t*>( &beDip );
+        uint8_t*    sip = reinterpret_cast<uint8_t*>( &beSip );
+        uint8_t*    dip = reinterpret_cast<uint8_t*>( &beDip );
 
         libnet_autobuild_arp( ARPOP_REPLY, myMac, sip, gwMac, dip, lnet );
         libnet_build_ethernet( gwMac, myMac, ETHERTYPE_ARP, nullptr, 0, lnet, 0 );
